@@ -23,6 +23,11 @@ if (!isSanityConfigured) {
 
 export const sanityClient = isSanityConfigured ? createClient(config) : null;
 
+/** Cliente que enxerga rascunhos (apenas usado em modo preview, nunca para visitantes). */
+function previewClient() {
+  return sanityClient!.withConfig({ perspective: 'drafts', useCdn: false, token: token || undefined });
+}
+
 const builder = isSanityConfigured ? createImageUrlBuilder(config) : null;
 
 export function urlFor(source: SanityImageSource) {
@@ -64,10 +69,13 @@ export interface Post {
 // ─────────────────────────────────────────
 
 /** Todos os posts ordenados por data (apenas publicados com data <= atual) */
-export async function getAllPosts(): Promise<Post[]> {
+export async function getAllPosts(preview = false): Promise<Post[]> {
   if (!sanityClient) return [];
-  return sanityClient.fetch(
-    `*[_type == "post" && (!defined(publishedAt) || publishedAt <= now())] | order(publishedAt desc) {
+  // Em preview (Studio → Presentation) inclui rascunhos e posts agendados.
+  const client = preview ? previewClient() : sanityClient;
+  const filter = preview ? '' : ' && (!defined(publishedAt) || publishedAt <= now())';
+  return client.fetch(
+    `*[_type == "post"${filter}] | order(publishedAt desc) {
       _id,
       title, titleEn,
       slug,
@@ -99,8 +107,7 @@ const POST_PREVIEW_QUERY = `*[_type == "post" && slug.current == $slug][0] {${PO
 export async function getPostBySlug(slug: string, preview = false): Promise<Post | null> {
   if (!sanityClient) return null;
   if (preview) {
-    const result = await sanityClient
-      .withConfig({ perspective: 'drafts', useCdn: false, token: token || undefined })
+    const result = await previewClient()
       .fetch(POST_PREVIEW_QUERY, { slug }, { cache: 'no-store' });
     return result ?? null;
   }
@@ -109,17 +116,17 @@ export async function getPostBySlug(slug: string, preview = false): Promise<Post
 }
 
 /** Todas as categorias distintas */
-export async function getCategories(): Promise<string[]> {
+export async function getCategories(preview = false): Promise<string[]> {
   if (!sanityClient) return [];
-  return sanityClient.fetch(
+  return (preview ? previewClient() : sanityClient).fetch(
     `array::unique(*[_type == "post" && defined(category)].category->title) | order(@ asc)`
   );
 }
 
 /** Posts relacionados na mesma categoria */
-export async function getRelatedPosts(category: string, excludeId: string): Promise<Post[]> {
+export async function getRelatedPosts(category: string, excludeId: string, preview = false): Promise<Post[]> {
   if (!sanityClient) return [];
-  return sanityClient.fetch(
+  return (preview ? previewClient() : sanityClient).fetch(
     `*[_type == "post" && category->title == $category && _id != $excludeId] | order(publishedAt desc)[0...3] {
       _id,
       title,

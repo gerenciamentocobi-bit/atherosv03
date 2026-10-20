@@ -42,7 +42,7 @@ export default async function PostPage({ params }: Props) {
   if (!post) notFound();
 
   const related = post.category
-    ? await getRelatedPosts(post.category, post._id)
+    ? await getRelatedPosts(post.category, post._id, isDraft)
     : [];
 
   const readTime = post.body ? estimateReadTime(post.body as any[]) : 1;
